@@ -52,8 +52,19 @@ create table sales.special_offer (
 	spof_modified_date timestamp not null default current_timestamp,
 	spof_cate_id integer references master.category(cate_id) on delete cascade	
 )
+alter table sales.special_offer
+add column spof_description varchar(256) not null;
+
+alter table sales.special_offer
+alter column spof_start_date type date,
+alter column spof_end_date type date
+
+ALTER TABLE sales.special_offer
+ALTER COLUMN spof_start_date SET NOT NULL,
+ALTER COLUMN spof_end_date SET NOT NULL;
+
 --drop table sales.special_offer
---select * from sales.special_offer;
+select * from sales.special_offer;
 
 create table sales.special_offer_programs(
 	soco_id serial primary key,
@@ -63,7 +74,7 @@ create table sales.special_offer_programs(
 	soco_modified_date timestamp default current_timestamp
 )
 --drop table sales.special_offer_programs;
---select * from sales.special_offer_programs;
+select * from sales.special_offer_programs;
 
 create table sales.sales_order_header(
 	sohe_id serial primary key,
@@ -129,27 +140,69 @@ create table sales.cart_items (
 --insert data
 
 insert into curriculum.program_entity(prog_title)
-values ('percobaan1');
+values ('percobaan2');
 
 insert into master.category(cate_name)
-values ('percobaan1');
+values ('percobaan2');
 
+insert into payment.transaction_payment(trpa_code_number)
+values ('TR-20230525-00001')
+
+call sales.insertspecialoffer(
+'[
+	{
+		"spof_description":"percobaan kedua memasukkan data",
+		"spof_discount":9,
+		"spof_type":"apa",
+		"spof_start_date":"2023-10-10",
+		"spof_end_date":"2023-11-30",
+		"spof_min_qty":1,
+		"spof_max_qty":10,
+		"spof_cate_id":1,
+		"soco_prog_entity_id":1,
+		"soco_status":"closed"
+	},
+	{
+		"spof_description":"percobaan ketiga memasukkan data",
+		"spof_discount":30,
+		"spof_type":"sembarang",
+		"spof_start_date":"2022-09-01",
+		"spof_end_date":"2022-10-30",
+		"spof_min_qty":6,
+		"spof_max_qty":11,
+		"spof_cate_id":2,
+		"soco_prog_entity_id":2,
+		"soco_status":"cancelled"
+	}
+	]'
+);
 ------------------------------------------------------------------------------------------------------------------------
 
---store procedure
+--store procedure 
 
-create or replace procedure public.insertspecialoffer (in data json)
-language 'plpgsql'
-as $BODY$
-declare new_spof_id int;
-begin
-with spof_id as (
-	insert into sales.special_offer(spof_discount,spof_type,spof_start_date,spof_end_date,spof_min_qty,spof_max_qty,spof_cate_id)
-	select spof_discount,spof_type,spof_start_date,spof_end_date,spof_min_qty,spof_max_qty,spof_cate_id
-	from json_to_recordset(data)
-)
+CREATE OR REPLACE PROCEDURE sales.insertspecialoffer(
+	IN data json)
+LANGUAGE 'plpgsql'
+AS $BODY$
+DECLARE
+    new_spof_id INTEGER;
+BEGIN
+    WITH spof_id AS (
+        INSERT INTO sales.special_offer (spof_description, spof_discount, spof_type, spof_start_date, spof_end_date, spof_min_qty, spof_max_qty, spof_cate_id)
+        SELECT spof_description, spof_discount, spof_type, spof_start_date::DATE, spof_end_date::DATE, spof_min_qty, spof_max_qty, spof_cate_id
+        FROM json_to_recordset(data) AS special_offer (spof_description varchar,spof_discount INTEGER, spof_type VARCHAR, spof_start_date TEXT, spof_end_date TEXT, spof_min_qty INTEGER, spof_max_qty INTEGER, spof_cate_id INTEGER)
+        RETURNING spof_id
+    )
+    SELECT spof_id INTO new_spof_id FROM spof_id;
 
-	
+    INSERT INTO sales.special_offer_programs (soco_prog_entity_id, soco_status, soco_spof_id)
+    SELECT soco_prog_entity_id, soco_status, new_spof_id
+    FROM json_to_recordset(data) AS special_offer_programs (soco_prog_entity_id INTEGER, soco_status VARCHAR);
+
+    COMMIT;
+END
+$BODY$;
+
 
 
 
