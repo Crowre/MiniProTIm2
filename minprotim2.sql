@@ -10,7 +10,7 @@ create table master.status(
 	status varchar(15) primary key
 )
 --select * from master.category
-
+select * from master.status;
 -------------------------------------------------------------------------------------------------------------
 
 --schema curriculum
@@ -94,6 +94,11 @@ create table sales.sales_order_header(
 )
 
 alter table sales.sales_order_header
+alter column sohe_order_date type date,
+alter column sohe_due_time type date,
+alter column sohe_ship_date type date;
+
+alter table sales.sales_order_header
 drop constraint sales_order_header_sohe_trpa_code_number_fkey,
 add constraint sales_order_header_sohe_trpa_code_number_fkey
 foreign key (sohe_trpa_code_number)
@@ -106,6 +111,7 @@ add constraint sales_order_header_sohe_status_fkey
 foreign key (sohe_status)
 references master.status(status)
 on delete cascade;
+
 
 --select * from sales.sales_order_header;
 
@@ -148,6 +154,12 @@ values ('percobaan2');
 insert into payment.transaction_payment(trpa_code_number)
 values ('TR-20230525-00001')
 
+insert into master.status(status)
+values('refund')
+
+insert into sales.sales_order_header(sohe_order_date,sohe_due_time,sohe_ship_date,sohe_order_number,sohe_account_number,sohe_trpa_code_number,sohe_subtotal,sohe_tax,sohe_total_due,sohe_license_code,sohe_user_entity_id,sohe_status)
+values ('2023-06-07','2023-06-08','2023-06-09','orderpertama01','wiwiwiwiwi','TR-20230525-00001','100','10','110','licensecode1',1,'open')
+
 call sales.insertspecialoffer(
 '[
 	{
@@ -176,6 +188,38 @@ call sales.insertspecialoffer(
 	}
 	]'
 );
+
+CALL sales.insertsalesorders('[
+{
+    "order_date": "2023-06-06",
+    "due_time": "2023-06-07",
+    "ship_date": "2023-06-08",
+    "order_number": "ORD001",
+    "account_number": "ACC001",
+    "trpa_code_number": "TRP001",
+    "subtotal": 100,
+    "tax": 10,
+    "total_due": 110,
+    "license_code": "LICENSE001",
+    "user_entity_id": 1,
+    "status": "open",
+	"item":[
+		{
+            "qty": 2,
+            "unit_price": 50,
+            "unit_discount": 5,
+            "line_total": 95,
+            "prog_entity_id": 10
+        },
+        {
+            "qty": 1,
+            "unit_price": 30,
+            "unit_discount": 2,
+            "line_total": 28,
+            "prog_entity_id": 20
+        }					
+	]
+}]')
 ------------------------------------------------------------------------------------------------------------------------
 
 --store procedure 
@@ -204,6 +248,42 @@ END
 $BODY$;
 
 
+CREATE OR REPLACE PROCEDURE sales.insertsalesorders(
+	IN data json)
+LANGUAGE 'plpgsql'
+AS $BODY$
+DECLARE
+    header_id INTEGER;
+BEGIN
+    -- Insert into sales_order_header table
+    with orderId as (
+		insert into sales.sales_order_header(sohe_order_date,sohe_due_time,sohe_ship_date,sohe_order_number,sohe_account_number,sohe_trpa_code_number,sohe_subtotal,sohe_tax,sohe_total_due,sohe_license_code,sohe_user_entity_id,sohe_status)
+		select sohe_order_date::DATE,sohe_due_time::DATE,sohe_ship_date::DATE,sohe_order_number,sohe_account_number,sohe_trpa_code_number,sohe_subtotal,sohe_tax,sohe_total_due,sohe_license_code,sohe_user_entity_id,sohe_status
+		from json_to_recordset (data) as sales_order_header (sohe_order_date TEXT,sohe_due_time TEXT,sohe_ship_date TEXT,sohe_order_number varchar,sohe_account_number varchar, sohe_trpa_code_number varchar,sohe_subtotal integer,sohe_tax integer,sohe_total_due integer,sohe_license_code varchar,sohe_user_entity_id integer,sohe_status varchar )
+		returning id
+	)
+	select id into header_id from orderId;
+	
+	insert into sales.sales_order_detail (
+		sode_qty,
+        sode_unit_price,
+        sode_unit_discount,
+        sode_line_total,
+        sode_sohe_id,
+        sode_prog_entity_id
+	)
+	SELECT
+        (item ->> 'qty')::INTEGER,
+        (item ->> 'unit_price')::INTEGER,
+        (item ->> 'unit_discount')::INTEGER,
+        (item ->> 'line_total')::INTEGER,
+        header_id,
+        (item ->> 'prog_entity_id')::INTEGER
+    FROM json_to_recordset(data) AS x(item);
+    -- Commit the transaction
+    COMMIT;
+END
+$BODY$;
 
-
+drop procedure sales.insertsalesorders
 
